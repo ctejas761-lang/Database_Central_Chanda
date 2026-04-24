@@ -194,6 +194,7 @@ select, button {
   padding: 10px;
   border-radius: 5px;
   box-shadow: 0 0 15px rgba(0,0,0,0.2);
+  margin-top: 8px;
 }
 </style>
 <!-- define toggleUIPanel early so inline onchange handlers always find it -->
@@ -293,6 +294,7 @@ function toggleUIPanel(panelId, isChecked) {
   
   
   <hr style="margin:8px 0;border:none;border-top:1px solid #ddd;">
+  <div><input type="checkbox" id="chkLegend" checked onchange="toggleLegend(this.checked)"><label for="chkLegend"> Show Legend</label></div>
   <div><input type="checkbox" id="chkPOI" onchange="toggleUIPanel('poiPanel', this.checked)"><label for="chkPOI"> Water Layers</label></div>
   <div><input type="checkbox" id="chkGEE" onchange="toggleUIPanel('geePanel', this.checked)"><label for="chkGEE"> Dynamic Change</label></div>
   <div><input type="checkbox" id="chkStatic" onchange="toggleUIPanel('staticPanel', this.checked)"><label for="chkStatic"> Static Thematic</label></div>
@@ -433,7 +435,7 @@ var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z
    LAYER GROUPS
    =============================== */
 var divisionLayer = L.featureGroup();
-var rangeLayer = L.featureGroup().addTo(map);
+var rangeLayer = L.featureGroup();
 var roundLayer = L.featureGroup();
 var beatLayer = L.featureGroup();
 var compartmentLayer = L.featureGroup();
@@ -714,33 +716,71 @@ function toggleLayer(layer, isChecked) {
     map.removeLayer(layer);
     zoomToVisibleLayers();
   }
+  updateLegend();
 }
 
 /* ===============================
    LEGEND
    =============================== */
-var legend = L.control({ position: "bottomright" });
+var legendItems = [
+  { layer: divisionLayer, color: "cyan", label: "Division Boundary" },
+  { layer: rangeLayer, color: "blue", label: "Range Boundary" },
+  { layer: roundLayer, color: "purple", label: "Round Boundary" },
+  { layer: beatLayer, color: "black", label: "Beat Boundary" },
+  { layer: compartmentLayer, color: "red", label: "Compartment Boundary" },
+  { layer: villageLayer, color: "orange", label: "Village Boundary" },
+  { layer: waterbodyLayer, iconHtml: '<span class="waterbody-icon">💧</span>', label: "Waterbody" },
+  { layer: rangeofficeLayer, iconHtml: '<span class="range-office-icon">🏛️</span>', label: "Range Office Headquarters" },
+  { layer: roundofficeLayer, iconHtml: '<span class="round-office-icon">🏫</span>', label: "Round Office" },
+  { layer: restHouseLayer, iconHtml: '<span class="rest-house-icon">🏨</span>', label: "Rest House" },
+  { layer: firewatchtowerLayer, iconHtml: '<span class="firewatchtower-icon">🔥</span>', label: "Fire Watch Tower" },
+  { layer: jogapursafariLayer, color: "red", label: "Tiger Safari" },
+  { layer: fdcmLayer, color: "brown", label: "FDCM Boundary" },
+  { layer: kanhargaonWlsLayer, color: "green", label: "Kanhargaon WLS" }
+];
 
+var legend = L.control({ position: "bottomright" });
 legend.onAdd = function (map) {
   var div = L.DomUtil.create("div", "legend");
-  var items = [
-    { color: "cyan", label: "Division Boundary" },
-    { color: "blue", label: "Range Boundary" },
-    { color: "purple", label: "Round Boundary" },
-    { color: "black", label: "Beat Boundary" },
-    { color: "red", label: "Compartment Boundary" },
-    { color: "orange", label: "Village Boundary" },
-    { iconHtml: '<span class="waterbody-icon">💧</span>', label: "Waterbody" },
-    { iconHtml: '<span class="range-office-icon">🏛️</span>', label: "Range Office Headquarters" },
-    { iconHtml: '<span class="round-office-icon">🏫</span>', label: "Round Office " },
-    { iconHtml: '<span class="rest-house-icon">🏨</span>', label: "Rest House" },
-    { iconHtml: '<span class="firewatchtower-icon">🔥</span>', label: "Fire Watch Tower" },
-    { color: "red", label: " Tiger Safari" },
-    { color: "brown", label: "FDCM Boundary" },
-    { color: "green ", label: "Kanhargaon WLS" }
-  ];
-  var html = "";
-  items.forEach(function(item) {
+  div.id = 'layerLegend';
+  updateLegend();
+  return div;
+};
+
+function toggleLegend(isVisible) {
+  var container = legend.getContainer();
+  if (!container) return;
+  container.style.display = isVisible ? 'block' : 'none';
+}
+
+function applyInitialLayerVisibility() {
+  var layerMap = {
+    chkDivision: divisionLayer,
+    chkRange: rangeLayer,
+    chkRound: roundLayer,
+    chkBeat: beatLayer,
+    chkCompartment: compartmentLayer,
+    chkVillage: villageLayer,
+    chkFirewatchtower: firewatchtowerLayer
+  };
+
+  Object.keys(layerMap).forEach(function(checkboxId) {
+    var checkbox = document.getElementById(checkboxId);
+    if (checkbox && checkbox.checked) {
+      map.addLayer(layerMap[checkboxId]);
+    }
+  });
+
+  updateLegend();
+}
+
+function updateLegend() {
+  var legendDiv = document.getElementById('layerLegend');
+  if (!legendDiv) return;
+
+  var html = '';
+  legendItems.forEach(function(item) {
+    if (!map.hasLayer(item.layer)) return;
     var symbol = '';
     if (item.iconHtml) {
       symbol = '<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:10px;">' + item.iconHtml + '</span>';
@@ -750,11 +790,16 @@ legend.onAdd = function (map) {
     }
     html += '<div style="display: flex; align-items: center; margin-bottom: 5px;">' + symbol + '<span>' + item.label + '</span></div>';
   });
-  div.innerHTML = html;
-  return div;
-};
+
+  if (!html) {
+    html = '<div style="font-size: 13px; color: #333;">No visible legend items</div>';
+  }
+
+  legendDiv.innerHTML = html;
+}
 
 legend.addTo(map);
+applyInitialLayerVisibility();
 
 /* ===============================
    LAYER CONTROL
@@ -829,6 +874,7 @@ function clearAllDropdownLayers() {
             map.removeLayer(layer);
         }
     });
+    updateLegend();
 }
 
 /* ================= WATER LAYERS DROPDOWN HANDLER ================= */
@@ -843,6 +889,9 @@ function loadPoiLayer() {
     // The waterbody layer is pre-loaded from 'Waterbody_cc.geojson', so we just add it.
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
+    updateLegend();
+  } else {
+    updateLegend();
   }
 }
 
@@ -860,6 +909,9 @@ function loadOtherLayer() {
   if (val && layerMap[val]) {
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
+    updateLegend();
+  } else {
+    updateLegend();
   }
 }
 
@@ -874,6 +926,9 @@ function loadOfficeLayer() {
   if (val && layerMap[val]) {
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
+    updateLegend();
+  } else {
+    updateLegend();
   }
 }
 
@@ -888,6 +943,9 @@ function loadSafariLayer() {
   if (val && layerMap[val]) {
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
+    updateLegend();
+  } else {
+    updateLegend();
   }
 }
 
@@ -902,6 +960,9 @@ function loadHouseLayer() {
   if (val && layerMap[val]) {
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
+    updateLegend();
+  } else {
+    updateLegend();
   }
 }
 
