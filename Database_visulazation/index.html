@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+<!-- Favicon -->
+<link rel="icon" href="Logo/tiger_logo.jpg" type="image/jpeg">
+
+<!-- Proj4 and Leaflet (ensure Leaflet is loaded before proj4leaflet) -->
+<script src="https://unpkg.com/proj4@2.8.1/dist/proj4.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/proj4leaflet@1.0.10/dist/proj4leaflet.js"></script>
+
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+#map {
+  width: 100%;
+  height: 89vh;
+}
+
+/* Label styling */
+.range-label {
+  font-size: 9px;
+  font-weight: bold;
+  color: #ad1414;
+  text-shadow: 1px 1px 2px #fff, -1px -1px 2px #fff, 1px -1px 2px #fff, -1px 1px 2px #fff;
+  white-space: nowrap;
+}
+/* Attribute popup box styles */
+.attr-box {
+  padding: 8px;
+  border-radius: 6px;
+  color: #111;
+}
+.attr-table td { padding: 4px; vertical-align: top; }
+
+/* Range office icon */
+.range-office-icon {
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* Round office icon */
+.round-office-icon {
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* Rest House icon */
+.rest-house-icon {
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* waterbody icon */
+.waterbody-icon {
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+
+/* Custom UI Panel */
+.ui-panel {
+  position: absolute;
+  top: 80px;
+  left: 0px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px); /* For Safari */
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  z-index: 900;
+  min-width: 80px;
+  border: 1px solid rgba(200,200,200,0.5);
+}
+.ui-panel h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 18px;
+  color: #333333;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+  font-weight: 600;
+}
+.ui-panel div {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+.ui-panel label {
+  cursor: pointer;
+  margin-left: 8px;
+}
+.ui-panel input[type="checkbox"] {
+  cursor: pointer;
+  transform: scale(1.1);
+}
+
+
+/* ================= HEADER ================= */
+header {
+    background: #1f6f43;
+    color: #fff;
+    padding: 4px 20px;
+}
+
+.header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* LEFT IMAGE (EMBLEM) */
+.header-left img {
+    height: 65px;
+}
+
+/* CENTER TITLE */
+.header-center {
+    flex: 1;
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+/* RIGHT IMAGE + ICONS */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-right img {
+    height: 65px;
+    border-radius: 6px;
+}
+
+/* SOCIAL ICONS */
+.social-icons a {
+    color: white;
+    font-size: 25px;
+    margin-left: 15px;
+    text-decoration: none;
+}
+
+.social-icons a:hover {
+    color: #ffd700;
+}
+/* ================= PANELS ================= */
+#geePanel, #staticPanel, #poiPanel ,#otherPanel , #officePanel , #safariPanel ,#housePanel {
+  position: absolute;
+  left: 0px;
+  z-index: 1200;
+  background: hsl(50, 10%, 89%);
+  padding: 10px;
+  width: 240px;
+  border-radius: 5px;
+  display: none; /* hidden by default; toggled from main UI */
+}
+
+/* position all dropdown panels at the same vertical offset */
+#geePanel { top: 550px; }
+#staticPanel { top: 550px; }
+#poiPanel { top: 550px; }
+#otherPanel { top: 550px; }
+#officePanel { top: 550px; }
+#safariPanel { top: 550px; }
+#housePanel { top: 550px; }
+
+
+
+select, button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px;
+}
+
+.legend {
+  background: white;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.2);
+}
+</style>
+<!-- define toggleUIPanel early so inline onchange handlers always find it -->
+<script>
+function toggleUIPanel(panelId, isChecked) {
+  var panels = ['geePanel','staticPanel','poiPanel', 'otherPanel', 'officePanel', 'safariPanel', 'housePanel'];
+  var checkboxMap = {
+    geePanel: 'chkGEE',
+    staticPanel: 'chkStatic',
+    poiPanel: 'chkPOI',
+    otherPanel: 'chkOther',
+    officePanel: 'chkOffice',
+    safariPanel: 'chkSafari',
+    housePanel: 'chkHouse'
+  };
+
+  panels.forEach(function(id) {
+    var el = document.getElementById(id);
+    var cb = document.getElementById(checkboxMap[id]);
+    if (!el) return;
+
+    if (id === panelId && isChecked) {
+      el.style.display = 'block';
+      if (cb) cb.checked = true;
+    } else {
+      el.style.display = 'none';
+      if (cb) cb.checked = false;
+    }
+  });
+}
+</script>
+</head>
+<body>
+
+
+<!-- ================= HEADER ================= -->
+<header>
+    <div class="header-container">
+
+        <!-- LEFT IMAGE -->
+        <div class="header-left">
+            <img src="Logo/Maha_Logo.jpeg" alt="Government Emblem">
+        </div>
+
+        <!-- CENTER TITLE -->
+        <div class="header-center">
+            Central Chanda Geospatial Database 
+        </div>
+
+        <!-- SOCIAL ICONS + RIGHT IMAGE -->
+<div class="header-right">
+
+  
+    <!-- SOCIAL & CONTACT ICONS -->
+    <div class="social-icons">
+
+        <!-- INSTAGRAM -->
+        <a href="https://www.instagram.com/YOUR_PAGE_NAME" 
+           target="_blank" title="Instagram">
+            <i class="fab fa-instagram"></i>
+        </a>
+
+        <!-- WHATSAPP -->
+        <a href="https://wa.me/7028338510" 
+           target="_blank" title="WhatsApp">
+            <i class="fab fa-whatsapp"></i>
+        </a>
+
+        <!-- EMAIL -->
+        <a href="mailto:tejaskchavan22@gmail.com" 
+           title="Email">
+            <i class="fas fa-envelope"></i>
+        </a>
+
+    </div>
+
+    <!-- TIGER IMAGE -->
+    <img src="Logo/tiger_logo.jpg" alt="Tiger Logo">
+
+</div>
+
+
+    </div>
+</header>
+
+<div id="map"></div>
+
+<div class="ui-panel">
+  <h3>Map Layers</h3>
+  <div><input type="checkbox" id="chkDivision" onchange="toggleLayer(divisionLayer, this.checked)"><label for="chkDivision"> Division Boundary</label></div>
+  <div><input type="checkbox" id="chkRange" onchange="toggleLayer(rangeLayer, this.checked)"><label for="chkRange"> Range Boundary</label></div>
+  <div><input type="checkbox" id="chkRound" checked onchange="toggleLayer(roundLayer, this.checked)"><label for="chkRound"> Round Boundary</label></div>
+  <div><input type="checkbox" id="chkBeat" onchange="toggleLayer(beatLayer, this.checked)"><label for="chkBeat"> Beat Boundary</label></div>
+  <div><input type="checkbox" id="chkCompartment" onchange="toggleLayer(compartmentLayer, this.checked)"><label for="chkCompartment"> Compartment Boundary</label></div>
+  <div><input type="checkbox" id="chkVillage" onchange="toggleLayer(villageLayer, this.checked)"><label for="chkVillage"> Village Boundary</label></div>
+  <div><input type="checkbox" id="chkFirewatchtower" onchange="toggleLayer(firewatchtowerLayer, this.checked)"><label for="chkFirewatchtower"> Fire Watch Tower</label></div>
+  
+  
+  <hr style="margin:8px 0;border:none;border-top:1px solid #ddd;">
+  <div><input type="checkbox" id="chkPOI" onchange="toggleUIPanel('poiPanel', this.checked)"><label for="chkPOI"> Water Layers</label></div>
+  <div><input type="checkbox" id="chkGEE" onchange="toggleUIPanel('geePanel', this.checked)"><label for="chkGEE"> Dynamic Change</label></div>
+  <div><input type="checkbox" id="chkStatic" onchange="toggleUIPanel('staticPanel', this.checked)"><label for="chkStatic"> Static Thematic</label></div>
+  <div><input type="checkbox" id="chkOther" onchange="toggleUIPanel('otherPanel', this.checked)"><label for="chkOther"> Wildlife Sanctuaries</label></div>
+  <div><input type="checkbox" id="chkOffice" onchange="toggleUIPanel('officePanel', this.checked)"><label for="chkOffice"> Forest Office </label></div>
+  <div><input type="checkbox" id="chkSafari" onchange="toggleUIPanel('safariPanel', this.checked)"><label for="chkSafari"> Safari </label></div>
+  <div><input type="checkbox" id="chkHouse" onchange="toggleUIPanel('housePanel', this.checked)"><label for="chkHouse"> Rest House/quarters </label></div>
+
+  <!-- ================= GEE APPLICATION PANEL ================= -->
+  <div id="geePanel">
+  <b>Dynamic Change Layer</b>
+  <select id="geeSelect">
+    <option value="">-- Select Parameter --</option>
+    <option value="ndvi">Normalized Difference Vegetation Index</option>
+    <option value="evi">Enhanced Vegetation Index</option>
+    <option value="rainfall">Rainfall</option>
+    <option value="temperature">Temperature</option>
+    <option value="vhi">Vegetation Health Index</option>
+    <option value="tci">Temperature Condition Index</option>
+    <option value="vci">Vegetation Condition Index</option>
+    <option value="forest_health">Forest Health Index</option>
+    <option value="plantation">Plantation Suitability Index</option>
+    <option value="fsi">Forest Density Classification</option>
+    <option value="fsi_alert">FSI Fire Alerts</option>
+    <option value="lulc">Land Use Land Cover</option>
+    <option value="Waterbody">Water Availability Index</option>
+    <option value="Deforest_Loss_Gain">Deforest(Loss and Gain)</option>
+    <option value="FOREST_DROUGHT_STRESS_INDEX"> Forest Drought Stress Index</option>
+    <option value="FOREST_GROWTH_RATE_INDEX">Forest Growth Rate Index</option>
+    <option value="Above_Ground_Biomass">Above Ground Biomass </option>
+    <option value="Below_Ground_Biomass">Below Ground Biomass</option>
+    <option value="canopy_height_models">Canopy Height Models</option>
+  </select>
+  <button onclick="openGEE()">Load Layer</button>
+  </div>
+
+  <!-- ================= STATIC LAYER PANEL ================= -->
+  <div id="staticPanel">
+  <b>Static Thematic Layers</b>
+  <select id="staticSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="Soil_Type">Soil Type</option>
+    <option value="geomorphology">Geomorphology</option>
+  </select>
+  <button onclick="loadStaticLayer()">Load Layer</button>
+  </div>
+
+  <!-- ================= OTHER LAYERS PANEL ================= -->
+  <div id="poiPanel">
+  <b>Water Layers</b>
+  <select id="poiSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="waterbody">Waterbody</option>
+  </select>
+  <button onclick="loadPoiLayer()">Load Layer</button>
+  </div>
+
+
+  <!-- ================= OTHER LAYERS PANEL ================= -->
+  <div id="otherPanel">
+  <b>Wildlife Sanctuaries Layers</b>
+  <select id="otherSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="fdcm">FDCM Boundary</option>
+    <option value="kanhargaon">Kanhargaon WLS</option>
+  </select>
+  <button onclick="loadOtherLayer()">Load Layer</button>
+  </div>
+
+   <!-- ================= OFFICE LAYERS PANEL ================= -->
+
+ <div id="officePanel">
+  <b>Office Layers</b>
+  <select id="officeSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="rangeoffice">Range office Headquarters</option>
+    <option value="roundoffice">Round office</option>
+
+  </select>
+  <button onclick="loadOfficeLayer()">Load Layer</button>
+  </div>
+
+  <!--================= OTHER LAYERS PANEL ================= -->
+  <div id="safariPanel">
+  <b>Safari Layers</b>
+  <select id="safariSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="jogapur">Jogapur Safari</option>
+    <option value="karwa">karwa Safari</option>
+  </select>
+  <button onclick="loadSafariLayer()">Load Layer</button>
+  </div>
+
+<div id="housePanel">
+  <b>House Layers</b>
+  <select id="houseSelect">
+    <option value="">-- Select Layer --</option>
+    <option value="restHouse">Rest House</option>
+  </select>
+  <button onclick="loadHouseLayer()">Load Layer</button>
+  </div>
+
+<script>
+/* ===============================
+   MAP INITIALIZATION
+   =============================== */
+var map = L.map('map', { zoomControl: false }).setView([19.732932, 79.399750], 10);
+
+/* ===============================
+   BASEMAPS
+   =============================== */
+var osmMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19
+})
+
+var darkMap = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  { attribution: '© CARTO', maxZoom: 19 }
+);
+
+var satelliteMap = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { attribution: '© Esri', maxZoom: 19 }
+);
+
+var googleStreets = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{
+    maxZoom: 20,
+    subdomains:['mt0','mt1','mt2','mt3']
+});
+
+var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',{
+    maxZoom: 20,
+    subdomains:['mt0','mt1','mt2','mt3']
+}).addTo(map);
+
+/* ===============================
+   LAYER GROUPS
+   =============================== */
+var divisionLayer = L.featureGroup();
+var rangeLayer = L.featureGroup().addTo(map);
+var roundLayer = L.featureGroup();
+var beatLayer = L.featureGroup();
+var compartmentLayer = L.featureGroup();
+var waterbodyLayer = L.featureGroup();
+var villageLayer = L.featureGroup();
+var firewatchtowerLayer = L.featureGroup();
+var fdcmLayer = L.featureGroup();
+var kanhargaonWlsLayer = L.featureGroup();
+var rangeofficeLayer = L.featureGroup();
+var roundofficeLayer = L.featureGroup();
+var restHouseLayer = L.featureGroup();
+var jogapursafariLayer = L.featureGroup();
+var karwasafariLayer = L.featureGroup();
+
+
+/* ===============================
+   PROJECTION (UTM 44N)
+   =============================== */
+proj4.defs("EPSG:32644", "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs");
+
+/* ===============================
+   DATA LOADING FUNCTION
+   =============================== */
+function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM = true, showAllAttributes = false, labelPredicate = null) {
+  fetch(encodeURI(url))
+    .then(response => {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(data => {
+      // Transform coordinates
+      if (isUTM) {
+      data.features.forEach(feature => {
+        if (feature.geometry.type === "MultiPolygon") {
+          feature.geometry.coordinates.forEach(polygon => {
+            polygon.forEach(ring => {
+              ring.forEach(coord => {
+                const t = proj4("EPSG:32644", "WGS84", coord);
+                coord[0] = t[0];
+                coord[1] = t[1];
+              });
+            });
+          });
+        } else if (feature.geometry.type === "Polygon") {
+          feature.geometry.coordinates.forEach(ring => {
+            ring.forEach(coord => {
+              const t = proj4("EPSG:32644", "WGS84", coord);
+              coord[0] = t[0];
+              coord[1] = t[1];
+            });
+          });
+        }
+      });
+      }
+
+      // Create GeoJSON layer
+      var geoJson = L.geoJSON(data, {
+        style: function () {
+          return { color: color, weight: 2, fillOpacity: 0.0, fillColor: color };
+        },
+        onEachFeature: function (feature, layer) {
+          function buildAttributesTable(props) {
+            if (!props) return '<div>No attributes</div>';
+            var content = '<div style="max-height: 300px; overflow-y: auto;">'
+              + '<table class="attr-table" border="1" style="border-collapse: collapse; width: 100%; font-size: 12px;">';
+            for (var key in props) {
+              content += '<tr><td style="padding: 4px; background-color: #f2f2f2; width: 35%;"><b>' + key + '</b></td><td style="padding: 4px;">' + props[key] + '</td></tr>';
+            }
+            content += '</table></div>';
+            return content;
+          }
+
+          function buildStyledAttributes(props) {
+            var table = buildAttributesTable(props);
+            var boxKey = (props && (props.fides || props.box_type || props.type)) || '';
+            var fidesColors = {
+              'typeA': '#e6f9e6',
+              'typeB': '#fde6e6',
+              'typeC': '#e6f0ff'
+            };
+            var color = fidesColors[boxKey] || '#ffffff';
+            return '<div class="attr-box" style="background:' + color + ';">' + table + '</div>';
+          }
+
+          if (showAllAttributes && feature.properties) {
+            layer.bindPopup(buildStyledAttributes(feature.properties));
+          } else {
+            var displayName = feature.properties && feature.properties[nameProp] ? feature.properties[nameProp] : '';
+            layer.bindPopup("<b>" + labelTitle + ":</b> " + displayName);
+          }
+
+          // On click always show full attributes table (styled by fides/box type)
+          layer.on('click', function(e) {
+            var content = buildStyledAttributes(feature.properties);
+            if (e && e.latlng) {
+              layer.bindPopup(content).openPopup(e.latlng);
+            } else {
+              layer.bindPopup(content).openPopup();
+            }
+          });
+        }
+      });
+
+      layerGroup.addLayer(geoJson);
+
+      // Add labels (defensive: handle different geometry / layer types)
+      geoJson.eachLayer(function (layer) {
+        try {
+          var center = null;
+
+          if (typeof layer.getBounds === 'function') {
+            var b = layer.getBounds();
+            if (b && typeof b.getCenter === 'function') center = b.getCenter();
+          }
+
+          if (!center && typeof layer.getLatLng === 'function') {
+            center = layer.getLatLng();
+          }
+
+          // Fallback: try to compute a simple centroid from feature geometry
+          if (!center && layer.feature && layer.feature.geometry) {
+            var geom = layer.feature.geometry;
+            if (geom.type === 'Polygon') {
+              var coords = geom.coordinates[0] || [];
+              if (coords.length) {
+                var sx = 0, sy = 0;
+                coords.forEach(function(c){ sx += c[0]; sy += c[1]; });
+                center = L.latLng(sy/coords.length, sx/coords.length);
+              }
+            } else if (geom.type === 'MultiPolygon') {
+              var coords = (geom.coordinates[0] && geom.coordinates[0][0]) || [];
+              if (coords.length) {
+                var sx = 0, sy = 0;
+                coords.forEach(function(c){ sx += c[0]; sy += c[1]; });
+                center = L.latLng(sy/coords.length, sx/coords.length);
+              }
+            } else if (geom.type === 'Point') {
+              var p = geom.coordinates; // [x,y]
+              center = L.latLng(p[1], p[0]);
+            }
+          }
+
+          if (!center) return; // couldn't determine a center, skip label
+
+          var name = (layer.feature && layer.feature.properties) ? layer.feature.properties[nameProp] : null;
+          if (!name) return;
+
+          // If a predicate is provided, allow it to decide whether to show the label
+          if (typeof labelPredicate === 'function') {
+            try {
+              var keep = labelPredicate(layer.feature && layer.feature.properties ? layer.feature.properties : {});
+              if (!keep) return;
+            } catch (e) {
+              return;
+            }
+          }
+
+          L.marker(center, {
+            icon: L.divIcon({
+              className: 'range-label',
+              html: name,
+              iconSize: [60, 10],
+              iconAnchor: [30, 5]
+            })
+          }).addTo(layerGroup);
+        } catch (e) {
+          console.warn('Skipping label for a feature due to error:', e);
+        }
+      });
+
+      // Fit bounds for Round Boundary (default view)
+      if (labelTitle === "Round Boundary") {
+        map.fitBounds(geoJson.getBounds().pad(0.1));
+      }
+    })
+    .catch(err => {
+      console.error("Error loading " + labelTitle, err);
+      alert(`Failed to load the ${labelTitle} layer.\n\nPlease check that the data file is in the correct folder.\n\nError: ${err.message}`);
+    });
+}
+
+// Load all layers 
+loadBoundaryLayer("Division_outer.geojson", divisionLayer, "cyan", "Division_N", "Division Boundary");
+loadBoundaryLayer("Range_Json.geojson", rangeLayer, "blue", "Range_Name", "Range Boundary");
+loadBoundaryLayer("Round_File.geojson", roundLayer, "purple", "Round_Name", "Round Boundary");
+loadBoundaryLayer("Beat_Boundary.geojson", beatLayer, "black", "Beat_Name", "Beat Boundary");
+loadBoundaryLayer("Comparment_Modify1.geojson", compartmentLayer, "red", "Old_ComptN", "Compartment Boundary");
+loadBoundaryLayer("Village_file_1.geojson", villageLayer, "Orange", "Name", "Village Boundary");
+loadBoundaryLayer("firewatchtower.geojson", firewatchtowerLayer, "Black", "Name", "Fire Watch Tower");
+loadBoundaryLayer("Jogapur_Safari_Route.geojson", jogapursafariLayer, "Red", "Name", "Jogapur Safari", false);
+loadBoundaryLayer("karwa_Safari_Route_Demo.geojson", karwasafariLayer, "Red", "Name", "karwa Safari", false);
+loadBoundaryLayer("FDCM.geojson", fdcmLayer, "brown", "FDCM", "FDCM Boundary", true);
+loadBoundaryLayer("Kanhargaon WLS.geojson", kanhargaonWlsLayer, "green ", "Name", "Kanhargaon WLS", false);
+
+
+// Load Range Office Headquarters as point data with a marker icon
+function loadPointLayer(url, layerGroup, iconHtml, nameProp, labelTitle, isUTM = true) {
+  return fetch(encodeURI(url))
+    .then(response => { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); })
+    .then(data => {
+      data.features.forEach(feature => {
+        if (!feature.geometry) return;
+        // transform UTM coords if needed
+        var coords = feature.geometry.coordinates;
+        if (isUTM && coords && (feature.geometry.type === 'Point')) {
+          const t = proj4("EPSG:32644", "WGS84", coords);
+          coords = [t[0], t[1]];
+        }
+
+        if (feature.geometry.type === 'Point') {
+          var latlng = [coords[1], coords[0]];
+          var marker = L.marker(latlng, {
+            icon: L.divIcon({ className: 'range-office-icon', html: iconHtml, iconSize: [24,24], iconAnchor: [12,12] })
+          });
+          var popupContent = feature.properties && feature.properties[nameProp] ? ("<b>"+labelTitle+":</b> " + feature.properties[nameProp]) : "";
+          if (popupContent) marker.bindPopup(popupContent);
+          layerGroup.addLayer(marker);
+        } else if (feature.geometry.type === 'MultiPoint') {
+          feature.geometry.coordinates.forEach(c => {
+            var use = c;
+            if (isUTM) {
+              const t = proj4("EPSG:32644", "WGS84", c);
+              use = [t[0], t[1]];
+            }
+            var marker = L.marker([use[1], use[0]], { icon: L.divIcon({ className: 'range-office-icon', html: iconHtml, iconSize: [24,24], iconAnchor: [12,12] }) });
+            layerGroup.addLayer(marker);
+          });
+        }
+      });
+    })
+    .catch(err => {
+      console.error("Error loading " + labelTitle, err);
+      alert(`Failed to load the ${labelTitle} layer.\n\nPlease check that the data file is in the correct folder.\n\nError: ${err.message}`);
+      throw err;
+    });
+}
+
+// use the correct file name and add a building icon; set isUTM=false if the geojson is already WGS84
+// GeoJSON uses EPSG:32644 (UTM); set isUTM=true so coordinates are transformed to WGS84
+loadPointLayer("Waterbody_cc.geojson", waterbodyLayer, '<span>💧</span>', "Attribute", "Waterbody", true);
+loadPointLayer("Range office Headquarters.geojson", rangeofficeLayer, '<span>🏛️</span>', "Attribute", "Range Office Headquarters", true);
+loadPointLayer("Round_Office_Headquarters.sbx.geojson", roundofficeLayer, '<span>🏫</span>', "Attribute", "Round Office", true);
+loadPointLayer("Rest House.geojson", restHouseLayer, '<span>🏨</span>', "Attribute", "Rest House", true);
+
+
+/* ===============================
+   ZOOM TO VISIBLE LAYERS
+   =============================== */
+function zoomToVisibleLayers() {
+  const visibleBounds = L.latLngBounds([]);
+  const layerGroups = [divisionLayer, rangeLayer, roundLayer, beatLayer, compartmentLayer, waterbodyLayer,  villageLayer, restHouseLayer ,jogapursafariLayer, karwasafariLayer, fdcmLayer, kanhargaonWlsLayer];
+  layerGroups.forEach(lg => {
+    // Check if the layer group is on the map and has content
+    if (map.hasLayer(lg) && lg.getLayers().length > 0) {
+      visibleBounds.extend(lg.getBounds());
+    }
+  });
+
+  if (visibleBounds.isValid()) {
+    map.fitBounds(visibleBounds.pad(0.1));
+  }
+}
+
+/* ===============================
+   TOGGLE LAYER FUNCTION
+   =============================== */
+function toggleLayer(layer, isChecked) {
+  if (isChecked) {
+    map.addLayer(layer);
+    if (layer.getLayers().length > 0) {
+      zoomToVisibleLayers();
+    } else {
+      layer.once('layeradd', function() {
+        zoomToVisibleLayers();
+      });
+    }
+  } else {
+    map.removeLayer(layer);
+    zoomToVisibleLayers();
+  }
+}
+
+/* ===============================
+   LEGEND
+   =============================== */
+var legend = L.control({ position: "bottomright" });
+
+legend.onAdd = function (map) {
+  var div = L.DomUtil.create("div", "legend");
+  var items = [
+    { color: "cyan", label: "Division Boundary" },
+    { color: "blue", label: "Range Boundary" },
+    { color: "purple", label: "Round Boundary" },
+    { color: "black", label: "Beat Boundary" },
+    { color: "red", label: "Compartment Boundary" },
+    { color: "orange", label: "Village Boundary" },
+    { iconHtml: '<span class="waterbody-icon">💧</span>', label: "Waterbody" },
+    { iconHtml: '<span class="range-office-icon">🏛️</span>', label: "Range Office Headquarters" },
+    { iconHtml: '<span class="round-office-icon">🏫</span>', label: "Round Office " },
+    { iconHtml: '<span class="rest-house-icon">🏨</span>', label: "Rest House" },
+    { iconHtml: '<span class="firewatchtower-icon">🔥</span>', label: "Fire Watch Tower" },
+    { color: "red", label: " Tiger Safari" },
+    { color: "brown", label: "FDCM Boundary" },
+    { color: "green ", label: "Kanhargaon WLS" }
+  ];
+  var html = "";
+  items.forEach(function(item) {
+    var symbol = '';
+    if (item.iconHtml) {
+      symbol = '<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:10px;">' + item.iconHtml + '</span>';
+    } else {
+      var color = item.color || 'transparent';
+      symbol = '<span style="background: ' + color + '; width: 18px; height: 18px; margin-right: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2); display: inline-block;"></span>';
+    }
+    html += '<div style="display: flex; align-items: center; margin-bottom: 5px;">' + symbol + '<span>' + item.label + '</span></div>';
+  });
+  div.innerHTML = html;
+  return div;
+};
+
+legend.addTo(map);
+
+/* ===============================
+   LAYER CONTROL
+   =============================== */
+L.control.layers(
+  {
+    "OpenStreetMap": osmMap,
+    "Dark Map": darkMap,
+    "Satellite": satelliteMap,
+    "Google Streets": googleStreets,
+    "Google Hybrid": googleHybrid
+  }
+).addTo(map);
+
+// ================= GEE LINKS =================
+function openGEE() { 
+  var links = { 
+    ndvi: "https://swift-branch-391106.projects.earthengine.app/view/ndvi",
+    evi: "https://swift-branch-391106.projects.earthengine.app/view/evi",
+    rainfall: "https://swift-branch-391106.projects.earthengine.app/view/rainfallupdate",
+    temperature: "https://swift-branch-391106.projects.earthengine.app/view/lst",
+    vhi: "https://swift-branch-391106.projects.earthengine.app/view/vhi",
+    tci: "https://swift-branch-391106.projects.earthengine.app/view/tci",
+    vci: "https://swift-branch-391106.projects.earthengine.app/view/vci",
+    forest_health: "https://swift-branch-391106.projects.earthengine.app/view/forest-health-index",
+    plantation: "https://swift-branch-391106.projects.earthengine.app/view/landsuitability",
+    fsi: "https://swift-branch-391106.projects.earthengine.app/view/forest-density-classification",
+    fsi_alert: "https://swift-branch-391106.projects.earthengine.app/view/fire-alerts",
+    lulc: "https://swift-branch-391106.projects.earthengine.app/view/central-chanda-lulc",
+    Waterbody: "https://earthengine.app/view/VCI_APP_URL",
+    Deforest_Loss_Gain: "https://swift-branch-391106.projects.earthengine.app/view/deforestation",
+    FOREST_DROUGHT_STRESS_INDEX: "https://swift-branch-391106.projects.earthengine.app/view/forest-drought-stress-index",
+    FOREST_GROWTH_RATE_INDEX: "https://swift-branch-391106.projects.earthengine.app/view/forest-growth-rate-index",
+    Above_Ground_Biomass: "https://swift-branch-391106.projects.earthengine.app/view/above-ground-biomass",
+    canopy_height_models: "https://swift-branch-391106.projects.earthengine.app/view/canopy-height-model-chm"
+
+  };
+
+  var key = document.getElementById("geeSelect").value;
+  if (links[key]) window.open(links[key], "_blank");
+  else alert("Please select a parameter");
+}
+
+//================= STATIC GEE APP LINKS =================
+function loadStaticLayer(){ 
+   var  staticLinks ={
+    Soil_Type: "https://earthengine.app/view/soil_depth_APP_URL",
+    geomorphology: "https://earthengine.app/view/soil_texture_APP_URL",
+  };
+
+  var key = document.getElementById("staticSelect").value;
+  if (staticLinks[key]) window.open(staticLinks[key], "_blank");
+  else alert("Please select a static layer");
+}
+
+/* ================= DROPDOWN LAYER HANDLERS ================= */
+
+// Helper to clear all layers managed by the dropdowns to ensure only one is active
+function clearAllDropdownLayers() {
+    const layers = [
+        waterbodyLayer,
+        restHouseLayer,
+        jogapursafariLayer,
+        karwasafariLayer,
+        fdcmLayer,
+        kanhargaonWlsLayer,
+        rangeofficeLayer,
+        roundofficeLayer
+    ];
+    layers.forEach(layer => {
+        if (map.hasLayer(layer)) {
+            map.removeLayer(layer);
+        }
+    });
+}
+
+/* ================= WATER LAYERS DROPDOWN HANDLER ================= */
+function loadPoiLayer() {
+  var select = document.getElementById('poiSelect');
+  var val = select.value;
+  var layerMap = { "waterbody": waterbodyLayer };
+
+  clearAllDropdownLayers();
+
+  if (val && layerMap[val]) {
+    // The waterbody layer is pre-loaded from 'Waterbody_cc.geojson', so we just add it.
+    map.addLayer(layerMap[val]);
+    zoomToVisibleLayers();
+  }
+}
+
+/* ================= OTHER LAYERS DROPDOWN HANDLER ================= */
+function loadOtherLayer() {
+  var select = document.getElementById('otherSelect');
+  var val = select.value;
+  var layerMap = {
+    "fdcm": fdcmLayer,
+    "kanhargaon": kanhargaonWlsLayer
+  };
+
+  clearAllDropdownLayers();
+
+  if (val && layerMap[val]) {
+    map.addLayer(layerMap[val]);
+    zoomToVisibleLayers();
+  }
+}
+
+/* ================= OFFICE LAYERS DROPDOWN HANDLER ================= */
+function loadOfficeLayer() {
+  var select = document.getElementById('officeSelect');
+  var val = select.value;
+  var layerMap = { "rangeoffice": rangeofficeLayer, "roundoffice": roundofficeLayer };
+
+  clearAllDropdownLayers();
+
+  if (val && layerMap[val]) {
+    map.addLayer(layerMap[val]);
+    zoomToVisibleLayers();
+  }
+}
+
+/* ================= SAFARI LAYERS DROPDOWN HANDLER ================= */
+function loadSafariLayer() {
+  var select = document.getElementById('safariSelect');
+  var val = select.value;
+  var layerMap = { "jogapur": jogapursafariLayer, "karwa": karwasafariLayer };
+
+  clearAllDropdownLayers();
+
+  if (val && layerMap[val]) {
+    map.addLayer(layerMap[val]);
+    zoomToVisibleLayers();
+  }
+}
+
+/* ================= HOUSE LAYERS DROPDOWN HANDLER ================= */
+function loadHouseLayer() {
+  var select = document.getElementById('houseSelect');
+  var val = select.value;
+  var layerMap = { "restHouse": restHouseLayer };
+
+  clearAllDropdownLayers();
+
+  if (val && layerMap[val]) {
+    map.addLayer(layerMap[val]);
+    zoomToVisibleLayers();
+  }
+}
+
+</script>
+</body>
+</html>
