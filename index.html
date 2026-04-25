@@ -297,7 +297,7 @@ function toggleUIPanel(panelId, isChecked) {
   <div><input type="checkbox" id="chkLegend" checked onchange="toggleLegend(this.checked)"><label for="chkLegend"> Show Legend</label></div>
   <div><input type="checkbox" id="chkPOI" onchange="toggleUIPanel('poiPanel', this.checked)"><label for="chkPOI"> Water Layers</label></div>
   <div><input type="checkbox" id="chkGEE" onchange="toggleUIPanel('geePanel', this.checked)"><label for="chkGEE"> Dynamic Change</label></div>
-  <div><input type="checkbox" id="chkStatic" onchange="toggleUIPanel('staticPanel', this.checked)"><label for="chkStatic"> Static Thematic</label></div>
+  <div><input type="checkbox" id="chkStatic" onchange="toggleUIPanel('staticPanel', this.checked)"><label for="chkStatic"> Soil Thematic</label></div>
   <div><input type="checkbox" id="chkOther" onchange="toggleUIPanel('otherPanel', this.checked)"><label for="chkOther"> Wildlife Sanctuaries</label></div>
   <div><input type="checkbox" id="chkOffice" onchange="toggleUIPanel('officePanel', this.checked)"><label for="chkOffice"> Forest Office </label></div>
   <div><input type="checkbox" id="chkSafari" onchange="toggleUIPanel('safariPanel', this.checked)"><label for="chkSafari"> Safari </label></div>
@@ -333,11 +333,14 @@ function toggleUIPanel(panelId, isChecked) {
 
   <!-- ================= STATIC LAYER PANEL ================= -->
   <div id="staticPanel">
-  <b>Static Thematic Layers</b>
+  <b>Soil Thematic Layers</b>
   <select id="staticSelect">
     <option value="">-- Select Layer --</option>
-    <option value="Soil_Type">Soil Type</option>
-    <option value="geomorphology">Geomorphology</option>
+    <option value="Soil_Depth">Soil Depth</option>
+    <option value="Soil_Erosion">Soil Erosion</option>
+    <option value="Soil_Slope">Soil Slope</option>
+    <option value="Soil_Productivity">Soil Productivity</option>
+    <option value="Soil_Texture">Soil Texture</option>
   </select>
   <button onclick="loadStaticLayer()">Load Layer</button>
   </div>
@@ -348,6 +351,7 @@ function toggleUIPanel(panelId, isChecked) {
   <select id="poiSelect">
     <option value="">-- Select Layer --</option>
     <option value="waterbody">Waterbody</option>
+    <option value="streamNetwork">Stream Network</option>
   </select>
   <button onclick="loadPoiLayer()">Load Layer</button>
   </div>
@@ -440,10 +444,81 @@ var roundLayer = L.featureGroup();
 var beatLayer = L.featureGroup();
 var compartmentLayer = L.featureGroup();
 var waterbodyLayer = L.featureGroup();
+var streamNetworkLayer = L.featureGroup();
 var villageLayer = L.featureGroup();
+var streamOrderColors = {
+  1: '#1f78b4',
+  2: '#33a02c',
+  3: '#ff7f00',
+  4: '#e31a1c',
+  5: '#6a3d9a',
+  6: '#b15928',
+  7: '#17becf'
+};
+
+var soilStyleConfig = {
+  "Soil Depth": {
+    prop: "class",
+    colors: {
+      "Extremely shallow (< 10cm)": "#d73027",
+      "Very shallow (10-25 cm)": "#fc8d59",
+      "Shallow (25-50cm)": "#fee08b",
+      "Deep,Moderately deep, slightly/moderately shallow (depth>50cm)": "#38a800"
+    },
+    defaultColor: "#f4a261"
+  },
+  "Soil Erosion": {
+    prop: "descr",
+    colors: {
+      "Very severe, gullied": "#b10026",
+      "Severe": "#e31a1c",
+      "Moderate": "#fc8d59",
+      "Slight": "#fdbb84",
+      "Very slight": "#fed976"
+    },
+    defaultColor: "#fd8d3c"
+  },
+  "Soil Slope": {
+    prop: "descr",
+    colors: {
+      "Level to very gently sl": "#ffffcc",
+      "Gently sloping": "#a1dab4",
+      "Moderately sloping": "#41b6c4",
+      "Strongly sloping": "#2c7fb8",
+      "Steeply sloping": "#253494"
+    },
+    defaultColor: "#74add1"
+  },
+  "Soil Productivity": {
+    prop: "prod_class",
+    colors: {
+      "NON PRODUCTIVE": "#d73027",
+      "LOW PRODUCTIVE": "#fc8d59",
+      "MODERATELY LOW PRODUCTIVE": "#fee08b",
+      "MODERATELY PRODUCTIVE": "#91cf60",
+      "HIGHLY PRODUCTIVE": "#1a9850"
+    },
+    defaultColor: "#66c2a5"
+  },
+  "Soil Texture": {
+    prop: "descr",
+    colors: {
+      "Fine texture": "#4575b4",
+      "2. Medium texture": "#74add1",
+      "Rocky and non soil": "#fdae61"
+    },
+    defaultColor: "#74a9cf"
+  }
+};
+
 var firewatchtowerLayer = L.featureGroup();
 var fdcmLayer = L.featureGroup();
 var kanhargaonWlsLayer = L.featureGroup();
+var soilDepthLayer = L.featureGroup();
+var soilErosionLayer = L.featureGroup();
+var soilSlopeLayer = L.featureGroup();
+var soilProductivityLayer = L.featureGroup();
+var soilTextureLayer = L.featureGroup();
 var rangeofficeLayer = L.featureGroup();
 var roundofficeLayer = L.featureGroup();
 var restHouseLayer = L.featureGroup();
@@ -455,12 +530,13 @@ var karwasafariLayer = L.featureGroup();
    PROJECTION (UTM 44N)
    =============================== */
 proj4.defs("EPSG:32644", "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs");
+proj4.defs("EPSG:32643", "+proj=utm +zone=43 +datum=WGS84 +units=m +no_defs");
 
 /* ===============================
    DATA LOADING FUNCTION
    =============================== */
-function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM = true, showAllAttributes = false, labelPredicate = null) {
-  fetch(encodeURI(url))
+function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM = true, srcCrs = "EPSG:32644", fillOpacity = 0.0, showAllAttributes = false, labelPredicate = null) {
+  return fetch(encodeURI(url))
     .then(response => {
       if (!response.ok) throw new Error("HTTP " + response.status);
       return response.json();
@@ -473,7 +549,7 @@ function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM =
           feature.geometry.coordinates.forEach(polygon => {
             polygon.forEach(ring => {
               ring.forEach(coord => {
-                const t = proj4("EPSG:32644", "WGS84", coord);
+                const t = proj4(srcCrs, "WGS84", coord);
                 coord[0] = t[0];
                 coord[1] = t[1];
               });
@@ -482,7 +558,7 @@ function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM =
         } else if (feature.geometry.type === "Polygon") {
           feature.geometry.coordinates.forEach(ring => {
             ring.forEach(coord => {
-              const t = proj4("EPSG:32644", "WGS84", coord);
+              const t = proj4(srcCrs, "WGS84", coord);
               coord[0] = t[0];
               coord[1] = t[1];
             });
@@ -493,8 +569,23 @@ function loadBoundaryLayer(url, layerGroup, color, nameProp, labelTitle, isUTM =
 
       // Create GeoJSON layer
       var geoJson = L.geoJSON(data, {
-        style: function () {
-          return { color: color, weight: 2, fillOpacity: 0.0, fillColor: color };
+        style: function (feature) {
+          if (labelTitle === "Stream Network" && feature && feature.properties && feature.properties.ORD_STRA != null) {
+            return {
+              color: streamOrderColors[feature.properties.ORD_STRA] || '#00bfff',
+              weight: 3,
+              opacity: 0.9
+            };
+          }
+
+          var soilConfig = soilStyleConfig[labelTitle];
+          if (soilConfig && feature && feature.properties) {
+            var value = feature.properties[soilConfig.prop];
+            var fillColor = soilConfig.colors[value] || soilConfig.defaultColor || color;
+            return { color: fillColor, weight: 1.5, fillOpacity: fillOpacity, fillColor: fillColor };
+          }
+
+          return { color: color, weight: 2, fillOpacity: fillOpacity, fillColor: color };
         },
         onEachFeature: function (feature, layer) {
           function buildAttributesTable(props) {
@@ -625,10 +716,11 @@ loadBoundaryLayer("Beat_Boundary.geojson", beatLayer, "black", "Beat_Name", "Bea
 loadBoundaryLayer("Comparment_Modify1.geojson", compartmentLayer, "red", "Old_ComptN", "Compartment Boundary");
 loadBoundaryLayer("Village_file_1.geojson", villageLayer, "Orange", "Name", "Village Boundary");
 loadBoundaryLayer("firewatchtower.geojson", firewatchtowerLayer, "Black", "Name", "Fire Watch Tower");
-loadBoundaryLayer("Jogapur_Safari_Route.geojson", jogapursafariLayer, "Red", "Name", "Jogapur Safari", false);
-loadBoundaryLayer("karwa_Safari_Route_Demo.geojson", karwasafariLayer, "Red", "Name", "karwa Safari", false);
+loadBoundaryLayer("Jogapur_Safari_Route.geojson", jogapursafariLayer, "Red", "Name", "Jogapur Safari");
+loadBoundaryLayer("karwa_Safari_Route_Demo.geojson", karwasafariLayer, "Red", "Name", "karwa Safari");
 loadBoundaryLayer("FDCM.geojson", fdcmLayer, "brown", "FDCM", "FDCM Boundary", true);
-loadBoundaryLayer("Kanhargaon WLS.geojson", kanhargaonWlsLayer, "green ", "Name", "Kanhargaon WLS", false);
+loadBoundaryLayer("Kanhargaon WLS.geojson", kanhargaonWlsLayer, "green ", "Name", "Kanhargaon WLS");
+loadBoundaryLayer("Stream_Network.geojson", streamNetworkLayer, "deepskyblue", "ORD_STRA", "Stream Network");
 
 
 // Load Range Office Headquarters as point data with a marker icon
@@ -686,7 +778,7 @@ loadPointLayer("Rest House.geojson", restHouseLayer, '<span>🏨</span>', "Attri
    =============================== */
 function zoomToVisibleLayers() {
   const visibleBounds = L.latLngBounds([]);
-  const layerGroups = [divisionLayer, rangeLayer, roundLayer, beatLayer, compartmentLayer, waterbodyLayer,  villageLayer, restHouseLayer ,jogapursafariLayer, karwasafariLayer, fdcmLayer, kanhargaonWlsLayer];
+  const layerGroups = [divisionLayer, rangeLayer, roundLayer, beatLayer, compartmentLayer, waterbodyLayer, streamNetworkLayer, villageLayer, soilDepthLayer, soilErosionLayer, soilSlopeLayer, soilProductivityLayer, soilTextureLayer, restHouseLayer ,jogapursafariLayer, karwasafariLayer, fdcmLayer, kanhargaonWlsLayer];
   layerGroups.forEach(lg => {
     // Check if the layer group is on the map and has content
     if (map.hasLayer(lg) && lg.getLayers().length > 0) {
@@ -730,13 +822,19 @@ var legendItems = [
   { layer: compartmentLayer, color: "red", label: "Compartment Boundary" },
   { layer: villageLayer, color: "orange", label: "Village Boundary" },
   { layer: waterbodyLayer, iconHtml: '<span class="waterbody-icon">💧</span>', label: "Waterbody" },
+  { layer: streamNetworkLayer, color: "deepskyblue", label: "Stream Network" },
   { layer: rangeofficeLayer, iconHtml: '<span class="range-office-icon">🏛️</span>', label: "Range Office Headquarters" },
   { layer: roundofficeLayer, iconHtml: '<span class="round-office-icon">🏫</span>', label: "Round Office" },
   { layer: restHouseLayer, iconHtml: '<span class="rest-house-icon">🏨</span>', label: "Rest House" },
   { layer: firewatchtowerLayer, iconHtml: '<span class="firewatchtower-icon">🔥</span>', label: "Fire Watch Tower" },
   { layer: jogapursafariLayer, color: "red", label: "Tiger Safari" },
   { layer: fdcmLayer, color: "brown", label: "FDCM Boundary" },
-  { layer: kanhargaonWlsLayer, color: "green", label: "Kanhargaon WLS" }
+  { layer: kanhargaonWlsLayer, color: "green", label: "Kanhargaon WLS" },
+  { layer: soilDepthLayer, color: "#a96f2b", label: "Soil Depth" },
+  { layer: soilErosionLayer, color: "#9c5d3d", label: "Soil Erosion" },
+  { layer: soilSlopeLayer, color: "#7a9a4c", label: "Soil Slope" },
+  { layer: soilProductivityLayer, color: "#4e7a53", label: "Soil Productivity" },
+  { layer: soilTextureLayer, color: "#55778e", label: "Soil Texture" }
 ];
 
 var legend = L.control({ position: "bottomright" });
@@ -778,9 +876,73 @@ function updateLegend() {
   var legendDiv = document.getElementById('layerLegend');
   if (!legendDiv) return;
 
+  function collectStreamOrders(layer, orders) {
+    if (layer.feature && layer.feature.properties && layer.feature.properties.ORD_STRA != null) {
+      orders.add(layer.feature.properties.ORD_STRA);
+    }
+    if (layer.eachLayer) {
+      layer.eachLayer(function(child) {
+        if (child !== layer) {
+          collectStreamOrders(child, orders);
+        }
+      });
+    }
+  }
+
+  function getLegendLabel(item) {
+    return item.label;
+  }
+
+  function collectSoilCategories(layer, prop, categories) {
+    if (layer.feature && layer.feature.properties && layer.feature.properties[prop] != null) {
+      categories.add(layer.feature.properties[prop]);
+    }
+    if (layer.eachLayer) {
+      layer.eachLayer(function(child) {
+        if (child !== layer) {
+          collectSoilCategories(child, prop, categories);
+        }
+      });
+    }
+  }
+
   var html = '';
+
   legendItems.forEach(function(item) {
     if (!map.hasLayer(item.layer)) return;
+
+    if (item.layer === streamNetworkLayer) {
+      var orders = new Set();
+      collectStreamOrders(item.layer, orders);
+
+      if (orders.size > 0) {
+        html += '<div style="font-weight: 700; margin-bottom: 5px;">' + item.label + '</div>';
+        var sorted = Array.from(orders).sort(function(a, b) { return a - b; });
+        sorted.forEach(function(order) {
+          var color = streamOrderColors[order] || '#00bfff';
+          var symbol = '<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:10px; border-radius: 3px; background: ' + color + '; border: 1px solid rgba(0,0,0,0.2);"></span>';
+          html += '<div style="display: flex; align-items: center; margin-bottom: 5px; margin-left: 12px;">' + symbol + '<span style="font-size: 13px;">' + order + '</span></div>';
+        });
+        return;
+      }
+    }
+
+    var soilConfig = soilStyleConfig[item.label];
+    if (soilConfig) {
+      var categories = new Set();
+      collectSoilCategories(item.layer, soilConfig.prop, categories);
+      if (categories.size > 0) {
+        html += '<div style="font-weight: 700; margin-bottom: 5px;">' + item.label + '</div>';
+        Array.from(categories).sort().forEach(function(value) {
+          var color = soilConfig.colors[value] || soilConfig.defaultColor || item.color || 'gray';
+          var displayValue = value;
+          var symbol = '<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:10px; border-radius: 3px; background: ' + color + '; border: 1px solid rgba(0,0,0,0.2);"></span>';
+          html += '<div style="display: flex; align-items: center; margin-bottom: 5px; margin-left: 12px;">' + symbol + '<span style="font-size: 13px;">' + displayValue + '</span></div>';
+        });
+        return;
+      }
+    }
+
     var symbol = '';
     if (item.iconHtml) {
       symbol = '<span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:10px;">' + item.iconHtml + '</span>';
@@ -788,7 +950,7 @@ function updateLegend() {
       var color = item.color || 'transparent';
       symbol = '<span style="background: ' + color + '; width: 18px; height: 18px; margin-right: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2); display: inline-block;"></span>';
     }
-    html += '<div style="display: flex; align-items: center; margin-bottom: 5px;">' + symbol + '<span>' + item.label + '</span></div>';
+    html += '<div style="display: flex; align-items: center; margin-bottom: 5px;">' + symbol + '<span>' + getLegendLabel(item) + '</span></div>';
   });
 
   if (!html) {
@@ -843,16 +1005,39 @@ function openGEE() {
   else alert("Please select a parameter");
 }
 
-//================= STATIC GEE APP LINKS =================
-function loadStaticLayer(){ 
-   var  staticLinks ={
-    Soil_Type: "https://earthengine.app/view/soil_depth_APP_URL",
-    geomorphology: "https://earthengine.app/view/soil_texture_APP_URL",
+function loadStaticLayer() {
+  var select = document.getElementById('staticSelect');
+  var val = select.value;
+  var staticMap = {
+    "Soil_Depth": { layer: soilDepthLayer, file: "Soil_Depth.geojson", color: "#f4a261", nameProp: "class", label: "Soil Depth", srcCrs: "EPSG:32643", fillOpacity: 0.5 },
+    "Soil_Erosion": { layer: soilErosionLayer, file: "Soil_Erosion.geojson", color: "#fd8d3c", nameProp: "descr", label: "Soil Erosion", srcCrs: "EPSG:32643", fillOpacity: 0.5 },
+    "Soil_Slope": { layer: soilSlopeLayer, file: "Soil_Slope.geojson", color: "#41b6c4", nameProp: "descr", label: "Soil Slope", srcCrs: "EPSG:32643", fillOpacity: 0.5 },
+    "Soil_Productivity": { layer: soilProductivityLayer, file: "Soil_Productivity.geojson", color: "#91cf60", nameProp: "prod_class", label: "Soil Productivity", srcCrs: "EPSG:32643", fillOpacity: 0.5 },
+    "Soil_Texture": { layer: soilTextureLayer, file: "Soil_Texture.geojson", color: "#74a9cf", nameProp: "descr", label: "Soil Texture", srcCrs: "EPSG:32643", fillOpacity: 0.5 }
   };
 
-  var key = document.getElementById("staticSelect").value;
-  if (staticLinks[key]) window.open(staticLinks[key], "_blank");
-  else alert("Please select a static layer");
+  clearAllDropdownLayers();
+
+  if (val && staticMap[val]) {
+    var item = staticMap[val];
+    if (item.layer.getLayers().length === 0) {
+      loadBoundaryLayer(item.file, item.layer, item.color, item.nameProp, item.label, true, item.srcCrs, item.fillOpacity, true)
+        .then(function() {
+          map.addLayer(item.layer);
+          zoomToVisibleLayers();
+          updateLegend();
+        })
+        .catch(function(err) {
+          console.error('Failed to load static layer', err);
+        });
+    } else {
+      map.addLayer(item.layer);
+      zoomToVisibleLayers();
+      updateLegend();
+    }
+  } else {
+    updateLegend();
+  }
 }
 
 /* ================= DROPDOWN LAYER HANDLERS ================= */
@@ -861,11 +1046,17 @@ function loadStaticLayer(){
 function clearAllDropdownLayers() {
     const layers = [
         waterbodyLayer,
+        streamNetworkLayer,
         restHouseLayer,
         jogapursafariLayer,
         karwasafariLayer,
         fdcmLayer,
         kanhargaonWlsLayer,
+        soilDepthLayer,
+        soilErosionLayer,
+        soilSlopeLayer,
+        soilProductivityLayer,
+        soilTextureLayer,
         rangeofficeLayer,
         roundofficeLayer
     ];
@@ -881,12 +1072,11 @@ function clearAllDropdownLayers() {
 function loadPoiLayer() {
   var select = document.getElementById('poiSelect');
   var val = select.value;
-  var layerMap = { "waterbody": waterbodyLayer };
+  var layerMap = { "waterbody": waterbodyLayer, "streamNetwork": streamNetworkLayer };
 
   clearAllDropdownLayers();
 
   if (val && layerMap[val]) {
-    // The waterbody layer is pre-loaded from 'Waterbody_cc.geojson', so we just add it.
     map.addLayer(layerMap[val]);
     zoomToVisibleLayers();
     updateLegend();
